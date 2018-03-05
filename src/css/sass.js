@@ -57,6 +57,7 @@ export default class SassCompiler extends CompilerBase {
       indentedSyntax: filePath.match(/\.sass$/i),
       sourceMapRoot: filePath,
     });
+    delete opts.paths;
 
     let result = await new Promise((res,rej) => {
       sass.compile(sourceCode, opts, (r) => {
@@ -120,6 +121,7 @@ export default class SassCompiler extends CompilerBase {
       indentedSyntax: filePath.match(/\.sass$/i),
       sourceMapRoot: filePath,
     });
+    delete opts.paths;
 
     let result;
     toutSuite(() => {
@@ -157,30 +159,25 @@ export default class SassCompiler extends CompilerBase {
     const self = this;
     return (function (request, done) {
       let file;
-      if (request.file) {
+      if (request.file || fs.existsSync(request.resolved)) {
         done();
         return;
       } else {
-        // sass.js works in the '/sass/' directory
-        const cleanedRequestPath = request.resolved.replace(/^\/sass\//, '');
+        let variations = sass.getPathVariations(request.resolved);
         for (let includePath of includePaths) {
-          const filePath = path.resolve(includePath, cleanedRequestPath);
-          let variations = sass.getPathVariations(filePath);
-
-          file = variations
-            .map(self.fixWindowsPath.bind(self))
-            .reduce(self.importedFileReducer.bind(self), null);
-
-          if (file) {
-            const content = fs.readFileSync(file, { encoding: 'utf8' });
-            return sass.writeFile(file, content, () => {
-              done({ path: file });
-              return;
-            });
-          }
+          const filePath = path.resolve(includePath, request.current);
+          variations = variations.concat(sass.getPathVariations(filePath));
         }
 
-        if (!file) {
+        file = variations.map(self.fixWindowsPath.bind(self)).reduce(self.importedFileReducer.bind(self), null);
+
+        if (file) {
+          const content = fs.readFileSync(file, { encoding: 'utf8' });
+          return sass.writeFile(file, content, () => {
+            done({ path: file });
+            return;
+          });
+        } else {
           done();
           return;
         }
